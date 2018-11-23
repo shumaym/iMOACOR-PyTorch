@@ -8,32 +8,27 @@ import itertools
 import signal
 import numpy as np
 import torch
+import sys
+import config
 
-from config import (obj_function_name, n, k, M, Rmin, Rmax, q, xi,
-					Gmax, N, H, EPSILON, MAX_RECORD_SIZE, var_threshold,
-					tol_threshold, num_runs, scalarizing)
+# Gather all configuration parameters from config.py, according to the command-line arguments.
+(obj_function_name, n, k, M, Rmin, Rmax, q, xi,
+	Gmax, N, H, EPSILON, MAX_RECORD_SIZE, var_threshold,
+	tol_threshold, num_runs, scalarizer) = config.main(sys.argv[1:])
 
-# n:	Number of search space dimensions
-# k:	Number of objective functions, and so the number of results per solution
-# Rmin:	Lower domain bound for all search space dimensions
-# Rmax:	Upper domain bound for all search space dimensions
-# q:	Controls diversification process of the search
-# xi:	Controls convergence rate (used in standard deviation calculations)
-# Gmax:	Number of generations
-# M:	Number of ants
-# N:	Size of t_archive, where the best solutions are stored.
-# 		Each row of t_archive holds a solution's [(n) x values, (k) Fx values]
-# H:	Proportional parameter utilized for the construction of N convex weight vectors.
+if torch.__version__[0] < '1':
+	print('\nUnsupported PyTorch version. Please upgrade to v1.0 or greater.')
+	quit()
 
 flag_jit_enabled = True if (torch.__version__[0] >= '1') else False
 flag_create_snapshots = False
-torch.set_num_threads(1)
+torch.set_num_threads(4)
 dtype = torch.float32
 dtype_int = torch.int32
 
 # Used during calculation of standard deviations
 std_dev_coefficient = torch.as_tensor(xi / (N-1), dtype=dtype)
-# Used in the VADS scalarizing function.
+# Used in the VADS scalarizer function.
 p = torch.as_tensor(2.)
 
 """
@@ -172,7 +167,7 @@ def save_pareto_set_snapshot(execNum, output_subfolder, gen):
 	with open(''.join([output_subfolder, '/Run', str(execNum) , '_gen', gen_padded,'.pos']), 'w') as f:
 		f.write('# Lang=PyTorch\n')
 		f.write('# Function={0}\n'.format(obj_function_name))
-		f.write('# Scalarizing={0}\n'.format(scalarizing))
+		f.write('# Scalarizer={0}\n'.format(scalarizer))
 		f.write('# k={0}\n'.format(k))
 		f.write('# n={0}\n'.format(n))
 		f.write('# N={0}\n'.format(N))
@@ -197,7 +192,7 @@ def save_pareto_front_snapshot(execNum, output_subfolder, gen):
 	with open(''.join([output_subfolder, '/Run', str(execNum) , '_gen', gen_padded,'.pof']), 'w') as f:
 		f.write('# Lang=PyTorch\n')
 		f.write('# Function={0}\n'.format(obj_function_name))
-		f.write('# Scalarizing={0}\n'.format(scalarizing))
+		f.write('# Scalarizer={0}\n'.format(scalarizer))
 		f.write('# k={0}\n'.format(k))
 		f.write('# n={0}\n'.format(n))
 		f.write('# N={0}\n'.format(N))
@@ -221,9 +216,14 @@ def update_archive(
 	"""
 	union_solutions = torch.cat((t_archive, torch.cat((ants_x, ants_Fx), dim=1)), dim=0)
 
-	order_values = ranks * torch.max(ranks, dim=0)[0]
-	order_values.mul_(norms * torch.max(norms, dim=0)[0])
+	ranks_max = torch.max(ranks)
+	norms_max = torch.max(norms)
+	us_max = torch.max(us)
+
+	order_values = ranks * ranks_max * norms_max * us_max
+	order_values.add_(norms * norms_max * us_max)
 	order_values.add_(us)
+
 	order = torch.argsort(order_values)
 
 	t_archive = union_solutions[order[:N]]
@@ -359,7 +359,7 @@ def normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal):
 	return torch.where(vs != 0., nFx, Fx)
 
 
-def asf(union_nFx):
+def asf(union_nFx, WV):
 	"""
 	Achievement Scalarizing Function.
 	Produces alpha values to be used in the R2 Ranking algorithm.
@@ -367,7 +367,7 @@ def asf(union_nFx):
 	return torch.max(torch.abs(union_nFx / WV.unsqueeze(dim=1)), dim=2)[0]
 
 
-def vads(union_nFx):
+def vads(union_nFx, WV, WV_magnitudes):
 	"""
 	Vector Angle Distance Scaling.
 	Produces alpha values to be used in the R2 Ranking algorithm.
@@ -389,8 +389,7 @@ def r2_ranking():
 	norms = torch.sqrt(torch.sum(torch.pow(union_solutions[:, n:n+k], 2), dim=1))
 	alphas_py = alphas.numpy()
 
-	order_values = alphas_py * np.max(alphas_py)
-	np.add(order_values, norms.numpy(), out=order_values)
+	order_values = alphas_py * np.max(alphas_py) + np.max(norms.numpy()) + norms.numpy()
 
 	ranks_py = ranks.fill_(np.inf).numpy()
 	comp_ranks_py = np.arange(1, N+M+1, dtype=np.float32)
@@ -472,10 +471,10 @@ for run in range(num_runs):
 	RECORD[0].copy_(z_nad)
 	union_nFx = normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal)
 
-	if scalarizing == 'ASF':
-		alphas = asf(union_nFx)
-	elif scalarizing == 'VADS':
-		alphas = vads(union_nFx)
+	if scalarizer == 'ASF':
+		alphas = asf(union_nFx, WV)
+	elif scalarizer == 'VADS':
+		alphas = vads(union_nFx, WV, WV_magnitudes)
 
 	r2_ranking()
 
@@ -483,10 +482,10 @@ for run in range(num_runs):
 	if flag_jit_enabled and not flag_jit_traced:
 		compute_gauss_probs = torch.jit.trace(compute_gauss_probs, (ranks), check_trace=False)
 		obj_function = torch.jit.trace(obj_function, (ants_x), check_trace=False)
-		if scalarizing == 'ASF':
-			asf = torch.jit.trace(asf, (union_nFx), check_trace=False)
-		elif scalarizing == 'VADS':
-			vads = torch.jit.trace(vads, (union_nFx), check_trace=False)
+		if scalarizer == 'ASF':
+			asf = torch.jit.trace(asf, (union_nFx, WV), check_trace=False)
+		elif scalarizer == 'VADS':
+			vads = torch.jit.trace(vads, (union_nFx, WV, WV_magnitudes), check_trace=False)
 		update_archive = torch.jit.trace(update_archive, (t_archive, ants_x, ants_Fx, ranks, us, norms), check_trace=False)
 		normalize_obj_function = torch.jit.trace(normalize_obj_function, (t_archive, ants_Fx, z_nad, z_ideal), check_trace=False)
 		flag_jit_traced = True
@@ -499,10 +498,10 @@ for run in range(num_runs):
 
 		union_nFx = normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal)
 
-		if scalarizing == 'ASF':
-			alphas = asf(union_nFx)
-		elif scalarizing == 'VADS':
-			alphas = vads(union_nFx)
+		if scalarizer == 'ASF':
+			alphas = asf(union_nFx, WV)
+		elif scalarizer == 'VADS':
+			alphas = vads(union_nFx, WV, WV_magnitudes)
 
 		r2_ranking()
 
