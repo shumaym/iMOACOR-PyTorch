@@ -11,17 +11,18 @@ import torch
 import sys
 import config
 
+version = '1.1'
+
 # Gather all configuration parameters from config.py, according to the command-line arguments.
 (obj_function_name, n, k, M, Rmin, Rmax, q, xi,
 	Gmax, N, H, EPSILON, MAX_RECORD_SIZE, var_threshold,
-	tol_threshold, num_runs, scalarizer) = config.main(sys.argv[1:])
+	tol_threshold, num_runs, scalarizer, flag_create_snapshots) = config.main(version, sys.argv[1:])
 
 if torch.__version__[0] < '1':
-	print('\nUnsupported PyTorch version. Please upgrade to v1.0 or greater.')
+	print('\nUnsupported PyTorch version. Please upgrade to PyTorch v1.0 or greater.')
 	quit()
 
 flag_jit_enabled = True if (torch.__version__[0] >= '1') else False
-flag_create_snapshots = False
 torch.set_num_threads(4)
 dtype = torch.float32
 dtype_int = torch.int32
@@ -31,10 +32,10 @@ std_dev_coefficient = torch.as_tensor(xi / (N-1), dtype=dtype)
 # Used in the VADS scalarizer function.
 p = torch.as_tensor(2.)
 
-"""
-Used for reference points required in Hypervolume calculation.
-Relevant values are printed to a .ref file in the output subfolder.
-"""
+###
+# Used for reference points required in Hypervolume calculation.
+# Relevant values are printed to a .ref file in the output subfolder.
+###
 reference_points_dict = {
 	'DTLZ1': ' '.join([str(1) for _ in range(k)]),
 	'DTLZ2': ' '.join([str(2) for _ in range(k)]),
@@ -46,14 +47,14 @@ reference_points_dict = {
 }
 
 if obj_function_name[:4] == 'DTLZ':
-	reference_points = reference_points_dict[obj_function_name]
+	reference_point = reference_points_dict[obj_function_name]
 	obj_function = getattr(__import__('objective_functions', fromlist=[obj_function_name]), obj_function_name)
 else:
 	print('\n\nFatal error: obj_function_name not valid!\n')
 	quit()
 
 
-""" Creation of output folder. """
+### Creation of output folder. ###
 try:
 	os.makedirs('./output')
 except PermissionError:
@@ -62,7 +63,7 @@ except PermissionError:
 except FileExistsError:
 	pass
 
-""" Creation of output subfolder. """
+### Creation of output subfolder. ###
 executionStart = ''.join([str(datetime.now().date())[5:], '_', str(datetime.now().time())[:8]]).replace(':', '-')
 output_subfolder = ''.join(['./output/', obj_function.__name__, '_m', str(k), '_', executionStart])
 try:
@@ -74,7 +75,7 @@ except FileExistsError:
 	pass
 
 if flag_create_snapshots:
-	""" Creation of snapshot folder. """
+	### Creation of snapshot folder. ###
 	try:
 		os.makedirs('./snapshots')
 	except PermissionError:
@@ -83,32 +84,32 @@ if flag_create_snapshots:
 	except FileExistsError:
 		pass
 
-	""" Creation of snapshot subfolder. """
+	### Creation of snapshot subfolder. ###
 	snapshot_subfolder = ''.join(['./snapshots/', obj_function.__name__, '_m', str(k), '_', executionStart])
 	try:
 		os.makedirs(snapshot_subfolder)
-		with open(''.join([snapshot_subfolder, '/reference_points.ref']), 'w') as f:
-			f.write(reference_points)
+		with open(''.join([snapshot_subfolder, '/reference_point.ref']), 'w') as f:
+			f.write(reference_point)
 	except PermissionError:
 		print('\n\nFatal error: You do not have the required permissions to create the snapshots subfolder. Exiting.')
 		quit()
 	except FileExistsError:
 		pass
 
-""" Creation of file containing the appropriate reference points for hypervolume calculations. """
+### Creation of file containing the appropriate reference points for hypervolume calculations. ###
 try:
-	with open(''.join([output_subfolder, '/reference_points.ref']), 'w') as f:
-		f.write(reference_points)
+	with open(''.join([output_subfolder, '/reference_point.ref']), 'w') as f:
+		f.write(reference_point)
 except PermissionError:
 	print('\n\nFatal error: You do not have the required permissions to create the file \'{0}\'\n'
-		+ 'Exiting.'.format(''.join([output_subfolder, '/reference_points.ref'])))
+		+ 'Exiting.'.format(''.join([output_subfolder, '/reference_point.ref'])))
 	quit()
 except FileExistsError:
 	pass
 
 def exit_gracefully(signum, frame):
 	"""
-	Used to allow early termination.
+	More elegant handling of keyboard interrupts.
 	Enter 'Ctrl+C', then 'y' to terminate early.
 	"""
 	signal.signal(signal.SIGINT, original_sigint)
@@ -247,7 +248,7 @@ def roulette_wheel_selection():
 	Selects solutions to use as the Gaussian means based on their positional ranks within t_archive.
 	PyTorch does not currently have a numpy.searchsorted equivalent.
 	"""
-	ants_random_values.uniform_(Rmin, Rmax)
+	ants_random_values.uniform_(0, 1)
 	g = gauss_probs_normalized.numpy()
 	return torch.from_numpy(np.searchsorted(g, ants_random_values.numpy(), side='right').reshape(M,n))
 
@@ -373,7 +374,9 @@ def vads(union_nFx, WV, WV_magnitudes):
 	Produces alpha values to be used in the R2 Ranking algorithm.
 	"""
 	nFx_magnitudes = torch.sqrt(torch.sum(torch.pow(union_nFx, 2), 1))
-	obj_vector_deviations = torch.pow(torch.sum((WV/WV_magnitudes).unsqueeze(1) * (union_nFx/nFx_magnitudes.unsqueeze(1)), dim=2), exponent=p)
+	obj_vector_deviations = torch.pow(
+		torch.sum((WV/WV_magnitudes).unsqueeze(1) *	(union_nFx/nFx_magnitudes.unsqueeze(1)), dim=2),
+		exponent=p)
 	return nFx_magnitudes / obj_vector_deviations
 
 
@@ -402,9 +405,18 @@ def r2_ranking():
 
 	time_inner_start = time.time()
 	for i in range(N):
-		np.greater(ranks_py[indices_lists[i]], comp_ranks_py, out=greater_than_list)
-		np.put(ranks_py, indices_lists[i][greater_than_list], comp_ranks_py)
-		np.put(us_py, indices_lists[i][greater_than_list], alphas_py[i][alpha_indices_py[indices_lists[i]]])
+		np.greater(
+			ranks_py[indices_lists[i]],
+			comp_ranks_py,
+			out=greater_than_list)
+		np.put(
+			ranks_py,
+			indices_lists[i][greater_than_list],
+			comp_ranks_py)
+		np.put(
+			us_py,
+			indices_lists[i][greater_than_list],
+			alphas_py[i][alpha_indices_py[indices_lists[i]]])
 
 
 def ant_solution_construction():
@@ -490,7 +502,6 @@ for run in range(num_runs):
 		normalize_obj_function = torch.jit.trace(normalize_obj_function, (t_archive, ants_Fx, z_nad, z_ideal), check_trace=False)
 		flag_jit_traced = True
 
-	all_gens_start = time.time()
 	for gen in range(Gmax):
 		ant_solution_construction()
 
@@ -512,7 +523,7 @@ for run in range(num_runs):
 			save_pareto_front_snapshot(run, snapshot_subfolder, gen)
 
 	time_run_end = time.time()
-	print('Time taken for run: {0}'.format(time_run_end-time_run_start))
+	print('Seconds taken in run: {0}'.format(time_run_end-time_run_start))
 
 	save_pareto_front(run)
 	save_pareto_set(run)

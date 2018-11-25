@@ -1,9 +1,8 @@
 # iMOACO<sub>R</sub> - PyTorch Implementation
 A PyTorch implementation of Falcón-Cardona and Coello Coello's iMOACO<sub><b>R</b></sub>, an indicator-based many-objective ant colony optimization algorithm for continuous search spaces.
-The original journal article is available for purchase <a href="https://link.springer.com/chapter/10.1007%2F978-3-319-45823-6_36">here</a>,
-while an older version is available to view <a href="http://computacion.cs.cinvestav.mx/%7ejfalcon/iMOACOR/iMOACOR-PPSN2016.pdf">here</a>.
+The original journal article is available for purchase <a href="https://link.springer.com/chapter/10.1007%2F978-3-319-45823-6_36">here</a>, while an older version is available to view <a href="http://computacion.cs.cinvestav.mx/%7ejfalcon/iMOACOR/iMOACOR-PPSN2016.pdf">here</a>.
 
-During the development of this project, a strong emphasis was placed on obtaining a runtime performance similar to that of the original C implementation, which has been achieved &ndash; even when using only 1 CPU core.
+During the development of this project, a strong emphasis was placed on obtaining runtime performance similar to that of the original C implementation, which has been achieved &ndash; even when using only 1 CPU core.
 While this implementation's operation and behaviour differ slightly, the resulting Pareto optimal fronts are similar.
 
 Dependencies
@@ -18,8 +17,15 @@ Usage
 Run with the following command:
 
 ```
-python3 iMOACOR.py <path to configuration file> [<number of runs to execute>] [<scalarization method>]
+python3 iMOACOR.py <path to configuration file> [OPTIONS]
 ```
+
+Options:
+*	```-r N | --runs=N```: The number of runs to execute
+*	```-s NAME | --scal=NAME```: Use the scalarization method named NAME
+*	```--snapshots```: Write generational snapshots to the ```snapshots``` folder
+*	```-h | --help```: Display the help page and exit
+*	```-v | --version```: Display the version information and exit
 
 All configurations are included within the ```config``` folder.
 Currently, the scalarization functions ```ASF``` (Achievement Scalarization Function) and ```VADS``` (Vector Angle Distance Scaling) are implemented.
@@ -37,8 +43,8 @@ DTLZ2 and DTLZ4 results were similar for all, while the PyTorch implementation g
 For DTLZ7, PyTorch with ASF performs better than C with ASF, although PyTorch with VADS performs drastically worse; this demonstrates the impact that the choice of scalarization may make.
 
 <div align="center" style="overflow-x:auto;">
-<table style="caption-side:bottom;">
-<caption><br>Mean and standard deviation of the Hypervolume values obtained from the DTLZ test suite across 30 runs.
+<table>
+<caption align="bottom"><br>Mean and standard deviation of the Hypervolume values obtained from the DTLZ test suite across 30 runs.
 <br>A greater Hypervolume is better.</caption>
 <thead>
 	<tr>
@@ -150,7 +156,7 @@ For DTLZ7, PyTorch with ASF performs better than C with ASF, although PyTorch wi
 </table>
 </div>
 
-Below are GIFs created from the results through the use of two of my other projects.
+Below are GIFs created from the results through the use of two of my other projects, <a href="https://github.com/shumaym/Hypervolume_Manager">Hypervolume Manager</a> and <a href="https://github.com/shumaym/Pareto_Set_Plotter">Pareto Set Plotter</a>.
 Shown are the ```n```-dimensional spatial positions for each of the best solutions created up until the current generation, as determined by the R2-ranking algorithm.
 Each bar represents one spatial dimension for the solutions, with positional values ranging from ```0``` &#8594; ```1``` from bottom to top.
 Each solution is drawn starting at a nest node and traverses through each dimension from left to right.

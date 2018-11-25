@@ -5,6 +5,7 @@ This script provides all parameters for the main program.
 
 from configparser import ConfigParser
 from numpy import math as np_math
+import getopt
 
 scalarizers_list = ('ASF', 'VADS')
 
@@ -21,7 +22,7 @@ scalarizers_list = ('ASF', 'VADS')
 # H:	Proportional parameter utilized for the construction of N convex weight vectors.
 
 
-def main(*args):
+def main(version, *args):
 	global n
 	global k
 	global M
@@ -31,21 +32,58 @@ def main(*args):
 	except IndexError:
 		print('Fatal error: Please specify the path of the configuration file as the first argument.\nExiting')
 		quit()
-	# Number of independent runs per execution.
-	num_runs = args[0][1] if len(args[0]) >= 2 else 1
-	try:
-		num_runs = int(num_runs)
-	except ValueError:
-		print('\nInvalid number of runs provided. Defaulting to 1.')
-		num_runs = 1
 
-	# Method of scalarization for the R2 Ranking algorithm.
-	scalarizer = str(args[0][2]).upper() if len(args[0]) >= 3 else 'ASF'
-	if scalarizer not in scalarizers_list:
-		print('\nError: Provided scalarizer name not implemented.')
-		print('Available scalarization functions: {0}'.format(', '.join(scalarizers_list)))
-		print('Defaulting to {0}.\n'.format(scalarizers_list[0]))
-		scalarizer = scalarizers_list[0]
+	num_runs = 1
+	scalarizer = scalarizers_list[0]
+	flag_create_snapshots = False
+
+	### Read all command-line parameters ###
+	try:
+		opts, args = getopt.getopt(args[0][1:], 'r:s:hv', ['runs=', 'scal=', 'snapshots', 'help', 'version'])
+		for opt, arg in opts:
+			if opt in ('-r', '--runs'):
+				try:
+					num_runs = int(arg)
+					print('Executing {0} runs.'.format(num_runs))
+				except ValueError:
+					print('\nInvalid number of runs provided. Defaulting to 1.')
+
+			elif opt in ('-s', '--scal'):
+				scalarizer = str(arg).upper()
+				if scalarizer not in scalarizers_list:
+					print('\nError: Provided scalarizer name not implemented.')
+					print('Available scalarization functions: {0}'.format(', '.join(scalarizers_list)))
+					print('Defaulting to {0}.\n'.format(scalarizers_list[0]))
+					scalarizer = scalarizers_list[0]
+				else:
+					print('Using {0} scalarizer.'.format(scalarizer))
+
+			elif opt in ('--snapshots'):
+				flag_create_snapshots = True
+				print('Creating snapshots in the \'snapshots\' folder.')
+
+			elif opt in ('-h', '--help'):
+				print('Usage: python3 iMOACOR.py <path to configuration file> [OPTIONS]\n')
+				print('Options:')
+				print(' -r N, --runs=N          the number of runs to execute')
+				print(' -s NAME, --scal=NAME    use the scalarization method named NAME')
+				print(' --snapshots             write generational snapshots to the \'snapshots\' folder')
+				print(' -h, --help              display this help page and exit')
+				print(' -v, --version           display version information and exit')
+				print('\n')
+				quit()
+
+			elif opt in ('-v', '--version'):
+				print('iMOACOR version {0}'.format(version))
+				print('License LGPLv3: GNU LGPL version 3 <https://www.gnu.org/licenses/lgpl>.')
+				print('Written by Mykel Shumay.')
+				print('\n')
+				quit()
+
+	except getopt.GetoptError:
+		print('\nError: Unrecognized option provided,'
+			+ ' or an option that requires an argument was given none.')
+		print('Call with option \'--help\' for the help page.\n\n')
 		quit()
 
 	try:
@@ -90,7 +128,4 @@ def main(*args):
 
 	return (obj_function_name, n, k, M, Rmin, Rmax, q, xi,
 			Gmax, N, H, EPSILON, MAX_RECORD_SIZE, var_threshold,
-			tol_threshold, num_runs, scalarizer)
-
-if __name__ == '__main__':
-	main()
+			tol_threshold, num_runs, scalarizer, flag_create_snapshots)
