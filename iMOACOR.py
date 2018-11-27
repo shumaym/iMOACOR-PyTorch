@@ -96,7 +96,7 @@ if flag_create_snapshots:
 	except FileExistsError:
 		pass
 
-### Creation of file containing the appropriate reference points for hypervolume calculations. ###
+### Creation of file containing the appropriate reference point for hypervolume calculations. ###
 try:
 	with open(''.join([output_subfolder, '/reference_point.ref']), 'w') as f:
 		f.write(reference_point)
@@ -161,7 +161,7 @@ def save_pareto_front(execNum):
 
 
 def save_pareto_set_snapshot(execNum, output_subfolder, gen):
-	""" Writes t_archive's x values to .pos file """
+	""" Writes t_archive's x values of the current generation to a .pos file """
 	num_digits = len(str(Gmax))
 	gen_padded = str(gen).zfill(num_digits)
 
@@ -186,7 +186,7 @@ def save_pareto_set_snapshot(execNum, output_subfolder, gen):
 
 
 def save_pareto_front_snapshot(execNum, output_subfolder, gen):
-	""" Writes t_archive's Fx values to .pof file """
+	""" Writes t_archive's Fx values of the current generation to a .pos file """
 	num_digits = len(str(Gmax))
 	gen_padded = str(gen).zfill(num_digits)
 
@@ -236,9 +236,10 @@ def update_archive(
 
 def compute_gauss_probs(ranks):
 	"""
-	Computes probability of selecting each solution of t_archive within roulette_wheel_selection function
+	Computes probability of selecting each solution of t_archive within roulette_wheel_selection function.
 	"""
-	gauss_weights = torch.exp(-torch.pow(ranks[:N], 2) / (2.*q*q*N*N)) / (q*N*torch.sqrt(torch.as_tensor(2.)*np.pi))
+	# torch.ones(1) at the end prevents a TracerWarning.
+	gauss_weights = torch.exp(-torch.pow(ranks[:N], 2) / (2.*q*q*N*N)) / (q*N*torch.sqrt(2.*np.pi*torch.ones(1)))
 	gauss_probs = torch.cumsum(gauss_weights, dim=0)
 	return gauss_probs / gauss_probs[-1]
 
@@ -306,7 +307,7 @@ def init_ref_points():
 	z_nad = torch.max(t_archive[:,n:], dim=0)[0]
 
 
-def update_refpoints(gen):
+def update_ref_points(gen):
 	"""
 	Updates the RECORD, z_min, z_ideal, z_max, and z_nad.
 	"""
@@ -505,7 +506,7 @@ for run in range(num_runs):
 	for gen in range(Gmax):
 		ant_solution_construction()
 
-		update_refpoints(gen)
+		update_ref_points(gen)
 
 		union_nFx = normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal)
 

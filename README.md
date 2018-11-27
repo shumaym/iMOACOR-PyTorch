@@ -25,7 +25,6 @@ Options:
 *	```-s NAME | --scal=NAME```: Use the scalarization method named NAME
 *	```--snapshots```: Write generational snapshots to the ```snapshots``` folder
 *	```-h | --help```: Display the help page and exit
-*	```-v | --version```: Display the version information and exit
 
 All configurations are included within the ```config``` folder.
 Currently, the scalarization functions ```ASF``` (Achievement Scalarization Function) and ```VADS``` (Vector Angle Distance Scaling) are implemented.
@@ -42,9 +41,10 @@ All experiments were run 30 times and used the same configurations.
 DTLZ2 and DTLZ4 results were similar for all, while the PyTorch implementation generally fares slightly better in DTLZ5 and DTLZ6.
 For DTLZ7, PyTorch with ASF performs better than C with ASF, although PyTorch with VADS performs drastically worse; this demonstrates the impact that the choice of scalarization may make.
 
+<br>
 <div align="center" style="overflow-x:auto;">
 <table>
-<caption align="bottom"><br>Mean and standard deviation of the Hypervolume values obtained from the DTLZ test suite across 30 runs.
+<caption align="bottom">Mean and standard deviation of the Hypervolume values obtained from the DTLZ test suite across 30 runs.
 <br>A greater Hypervolume is better.</caption>
 <thead>
 	<tr>
@@ -155,6 +155,7 @@ For DTLZ7, PyTorch with ASF performs better than C with ASF, although PyTorch wi
 </tr>
 </table>
 </div>
+<br>
 
 Below are GIFs created from the results through the use of two of my other projects, <a href="https://github.com/shumaym/Hypervolume_Manager">Hypervolume Manager</a> and <a href="https://github.com/shumaym/Pareto_Set_Plotter">Pareto Set Plotter</a>.
 Shown are the ```n```-dimensional spatial positions for each of the best solutions created up until the current generation, as determined by the R2-ranking algorithm.
@@ -167,7 +168,7 @@ The colour of a solution is determined by its rank relative to other solutions, 
 	<img src="docs/DTLZ7_m7_ASF_PyTorch.gif"/>
     <figcaption>PyTorch &ndash; ASF: DTLZ7 in 7 dimensions</figcaption>
 </figure>
-
+<br>
 <figure>
 	<img src="docs/DTLZ7_m7_ASF_C.gif"/>
     <figcaption>C &ndash; ASF: DTLZ7 in 7 dimensions</figcaption>
