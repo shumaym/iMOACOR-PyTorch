@@ -11,7 +11,7 @@ import torch
 import sys
 import config
 
-version = '1.1'
+version = '1.2'
 
 # Gather all configuration parameters from config.py, according to the command-line arguments.
 (obj_function_name, n, k, M, Rmin, Rmax, q, xi,
@@ -46,66 +46,6 @@ reference_points_dict = {
 	'DTLZ7': ' '.join([str(1) for _ in range(k-1)] + [str(21)])
 }
 
-if obj_function_name[:4] == 'DTLZ':
-	reference_point = reference_points_dict[obj_function_name]
-	obj_function = getattr(__import__('objective_functions', fromlist=[obj_function_name]), obj_function_name)
-else:
-	print('\n\nFatal error: obj_function_name not valid!\n')
-	quit()
-
-
-### Creation of output folder. ###
-try:
-	os.makedirs('./output')
-except PermissionError:
-	print('\n\nFatal error: You do not have the required permissions to create the output folder. Exiting.')
-	quit()
-except FileExistsError:
-	pass
-
-### Creation of output subfolder. ###
-executionStart = ''.join([str(datetime.now().date())[5:], '_', str(datetime.now().time())[:8]]).replace(':', '-')
-output_subfolder = ''.join(['./output/', obj_function.__name__, '_m', str(k), '_', executionStart])
-try:
-	os.makedirs(output_subfolder)
-except PermissionError:
-	print('\n\nFatal error: You do not have the required permissions to create the output subfolder. Exiting.')
-	quit()
-except FileExistsError:
-	pass
-
-if flag_create_snapshots:
-	### Creation of snapshot folder. ###
-	try:
-		os.makedirs('./snapshots')
-	except PermissionError:
-		print('\n\nFatal error: You do not have the required permissions to create the snapshots folder. Exiting.')
-		quit()
-	except FileExistsError:
-		pass
-
-	### Creation of snapshot subfolder. ###
-	snapshot_subfolder = ''.join(['./snapshots/', obj_function.__name__, '_m', str(k), '_', executionStart])
-	try:
-		os.makedirs(snapshot_subfolder)
-		with open(''.join([snapshot_subfolder, '/reference_point.ref']), 'w') as f:
-			f.write(reference_point)
-	except PermissionError:
-		print('\n\nFatal error: You do not have the required permissions to create the snapshots subfolder. Exiting.')
-		quit()
-	except FileExistsError:
-		pass
-
-### Creation of file containing the appropriate reference point for hypervolume calculations. ###
-try:
-	with open(''.join([output_subfolder, '/reference_point.ref']), 'w') as f:
-		f.write(reference_point)
-except PermissionError:
-	print('\n\nFatal error: You do not have the required permissions to create the file \'{0}\'\n'
-		+ 'Exiting.'.format(''.join([output_subfolder, '/reference_point.ref'])))
-	quit()
-except FileExistsError:
-	pass
 
 def exit_gracefully(signum, frame):
 	"""
@@ -128,7 +68,7 @@ original_sigint = signal.getsignal(signal.SIGINT)
 signal.signal(signal.SIGINT, exit_gracefully)
 
 
-def save_pareto_set(execNum):
+def save_pareto_set(output_subfolder, t_archive, execNum):
 	""" Writes t_archive's x values to .pos file """
 	with open(''.join([output_subfolder, '/Run', str(execNum) , '.pos']), 'w') as f:
 		f.write('# k={0}\n'.format(k))
@@ -144,7 +84,7 @@ def save_pareto_set(execNum):
 			f.write('\n')
 
 
-def save_pareto_front(execNum):
+def save_pareto_front(output_subfolder, t_archive, execNum):
 	""" Writes t_archive's Fx values to .pof file """
 	with open(''.join([output_subfolder, '/Run', str(execNum) , '.pof']), 'w') as f:
 		f.write('# k={0}\n'.format(k))
@@ -160,12 +100,12 @@ def save_pareto_front(execNum):
 			f.write('\n')
 
 
-def save_pareto_set_snapshot(execNum, output_subfolder, gen):
+def save_pareto_set_snapshot(snapshot_subfolder, t_archive, ranks, execNum, gen):
 	""" Writes t_archive's x values of the current generation to a .pos file """
 	num_digits = len(str(Gmax))
 	gen_padded = str(gen).zfill(num_digits)
 
-	with open(''.join([output_subfolder, '/Run', str(execNum) , '_gen', gen_padded,'.pos']), 'w') as f:
+	with open(''.join([snapshot_subfolder, '/Run', str(execNum) , '_gen', gen_padded,'.pos']), 'w') as f:
 		f.write('# Lang=PyTorch\n')
 		f.write('# Function={0}\n'.format(obj_function_name))
 		f.write('# Scalarizer={0}\n'.format(scalarizer))
@@ -176,21 +116,21 @@ def save_pareto_set_snapshot(execNum, output_subfolder, gen):
 		f.write('# xi={0}\n'.format(xi))
 		f.write('# Rmin={0}\n'.format(Rmin))
 		f.write('# Rmax={0}\n'.format(Rmax))
-		ranks_py = ranks.numpy()
+		ranks_np = ranks.numpy()
 		for row,sol in enumerate(t_archive.numpy()):
 			for col,x in enumerate(sol[:n]):
 				f.write(str(x))
 				f.write('\t')
-			f.write(str(ranks_py[row]))
+			f.write(str(ranks_np[row]))
 			f.write('\n')
 
 
-def save_pareto_front_snapshot(execNum, output_subfolder, gen):
+def save_pareto_front_snapshot(snapshot_subfolder, t_archive, ranks, execNum, gen):
 	""" Writes t_archive's Fx values of the current generation to a .pos file """
 	num_digits = len(str(Gmax))
 	gen_padded = str(gen).zfill(num_digits)
 
-	with open(''.join([output_subfolder, '/Run', str(execNum) , '_gen', gen_padded,'.pof']), 'w') as f:
+	with open(''.join([snapshot_subfolder, '/Run', str(execNum) , '_gen', gen_padded,'.pof']), 'w') as f:
 		f.write('# Lang=PyTorch\n')
 		f.write('# Function={0}\n'.format(obj_function_name))
 		f.write('# Scalarizer={0}\n'.format(scalarizer))
@@ -199,7 +139,7 @@ def save_pareto_front_snapshot(execNum, output_subfolder, gen):
 		f.write('# N={0}\n'.format(N))
 		f.write('# q={0}\n'.format(q))
 		f.write('# xi={0}\n'.format(xi))
-		ranks_py = ranks.numpy()
+		ranks_np = ranks.numpy()
 		for row,sol in enumerate(t_archive.numpy()):
 			for col,Fx in enumerate(sol[n:]):
 				f.write(str(Fx))
@@ -238,20 +178,20 @@ def compute_gauss_probs(ranks):
 	"""
 	Computes probability of selecting each solution of t_archive within roulette_wheel_selection function.
 	"""
-	# torch.ones(1) at the end prevents a TracerWarning.
+	# torch.ones(1) in the next line prevents a TracerWarning.
 	gauss_weights = torch.exp(-torch.pow(ranks[:N], 2) / (2.*q*q*N*N)) / (q*N*torch.sqrt(2.*np.pi*torch.ones(1)))
 	gauss_probs = torch.cumsum(gauss_weights, dim=0)
 	return gauss_probs / gauss_probs[-1]
 
 
-def roulette_wheel_selection():
+def roulette_wheel_selection(gauss_probs_normalized, ants_random_values):
 	"""
 	Selects solutions to use as the Gaussian means based on their positional ranks within t_archive.
 	PyTorch does not currently have a numpy.searchsorted equivalent.
 	"""
 	ants_random_values.uniform_(0, 1)
 	g = gauss_probs_normalized.numpy()
-	return torch.from_numpy(np.searchsorted(g, ants_random_values.numpy(), side='right').reshape(M,n))
+	return torch.as_tensor(np.searchsorted(g, ants_random_values.numpy(), side='right').reshape(M,n))
 
 
 def compute_means(t_archive, indices):
@@ -262,7 +202,7 @@ def compute_means(t_archive, indices):
 	return torch.as_tensor(np.diagonal(t_archive.numpy()[indices.numpy(), :n], axis1=1, axis2=2))
 
 
-def compute_std_devs():
+def compute_std_devs(t_archive, ants_means, std_devs):
 	"""
 	Computes 'standard deviation' for each ant, using a non-standard formula.
 	"""
@@ -274,7 +214,7 @@ def compute_std_devs():
 		out=std_devs)
 
 
-def sample():
+def sample(ants_means, std_devs, ants_x):
 	"""
 	Creates and samples Gaussian distributions for each ant's (mean, std_dev) in each positional dimension.
 	"""
@@ -297,25 +237,19 @@ def init_weight_vectors(H, k):
 	return combinations[torch.sum(combinations, dim=1) == H]/H + EPSILON
 
 
-def init_ref_points():
+def init_ref_points(t_archive):
 	"""
 	Initialize z_ideal and z_nad with appropriate values from ants_Fx.
 	"""
-	global z_ideal
-	global z_nad
 	z_ideal = torch.min(t_archive[:,n:], dim=0)[0]
 	z_nad = torch.max(t_archive[:,n:], dim=0)[0]
+	return z_ideal, z_nad
 
 
-def update_ref_points(gen):
+def update_ref_points(ants_Fx, RECORD, mark, z_ideal, z_nad, gen):
 	"""
 	Updates the RECORD, z_min, z_ideal, z_max, and z_nad.
 	"""
-	global z_min
-	global z_ideal
-	global z_max
-	global z_nad
-
 	z_min = torch.min(ants_Fx, dim=0)[0]
 	z_ideal = torch.min(z_min, other=z_ideal)
 	z_max = torch.max(ants_Fx, dim=0)[0]
@@ -349,6 +283,8 @@ def update_ref_points(gen):
 			if mark[component] > 0:
 				mark[component] -= 1
 
+	return z_ideal, z_nad
+
 
 def normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal):
 	"""
@@ -359,6 +295,16 @@ def normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal):
 	Fx = torch.cat((t_archive[:, n:], ants_Fx), dim=0)
 	nFx = (Fx - z_ideal)/vs
 	return torch.where(vs != 0., nFx, Fx)
+
+
+def calc_magnitudes(t_archive, ants_x, ants_Fx):
+	"""
+	Calculate the magnitude of each solution's Fx.
+	Both the solutions of t_archive and of the ants are processed.
+	"""
+	union_solutions = torch.cat((t_archive, torch.cat((ants_x, ants_Fx), dim=1)), dim=0)
+	norms = torch.sqrt(torch.sum(torch.pow(union_solutions[:, n:n+k], 2), dim=1))
+	return norms
 
 
 def asf(union_nFx, WV):
@@ -381,150 +327,235 @@ def vads(union_nFx, WV, WV_magnitudes):
 	return nFx_magnitudes / obj_vector_deviations
 
 
-def r2_ranking():
+def r2_ranking(alphas, ranks, us, norms):
 	"""
-	Implentation of the R2 indicator, which evaluates the desired aspects of a Pareto front approximation.
+	Implementation of the R2 indicator, which evaluates the desired aspects of a Pareto front approximation.
 	Implemented using Numpy rather than PyTorch due to its seemingly vastly shorter runtime in indexing operations.
 	"""
-	global norms
+	alphas_np = alphas.numpy()
+	order_values = alphas_np * np.max(alphas_np) + np.max(norms.numpy()) + norms.numpy()
 
-	union_solutions = torch.cat((t_archive, torch.cat((ants_x, ants_Fx), dim=1)), dim=0)
-
-	norms = torch.sqrt(torch.sum(torch.pow(union_solutions[:, n:n+k], 2), dim=1))
-	alphas_py = alphas.numpy()
-
-	order_values = alphas_py * np.max(alphas_py) + np.max(norms.numpy()) + norms.numpy()
-
-	ranks_py = ranks.fill_(np.inf).numpy()
-	comp_ranks_py = np.arange(1, N+M+1, dtype=np.float32)
+	ranks_np = ranks.fill_(np.inf).numpy()
+	comp_ranks_np = np.arange(1, N+M+1, dtype=np.float32)
 	greater_than_list = np.empty([N+M], dtype=np.bool)
 
-	alpha_indices_py = np.arange(N+M)
+	alpha_indices_np = np.arange(N+M)
 	indices_lists = np.argsort(order_values, axis=1)
-	us_py = us.numpy()
-	us_py[N:] += np.inf
+	us_np = us.numpy()
+	# Reset ant u's to inf, preserve t_archive u's
+	us_np[N:] += np.inf
 
 	time_inner_start = time.time()
 	for i in range(N):
 		np.greater(
-			ranks_py[indices_lists[i]],
-			comp_ranks_py,
+			ranks_np[indices_lists[i]],
+			comp_ranks_np,
 			out=greater_than_list)
 		np.put(
-			ranks_py,
-			indices_lists[i][greater_than_list],
-			comp_ranks_py)
+			a=ranks_np,
+			ind=indices_lists[i][greater_than_list],
+			v=comp_ranks_np)
 		np.put(
-			us_py,
-			indices_lists[i][greater_than_list],
-			alphas_py[i][alpha_indices_py[indices_lists[i]]])
+			a=us_np,
+			ind=indices_lists[i][greater_than_list],
+			v=alphas_np[i][alpha_indices_np[indices_lists[i]]])
+
+	return norms
 
 
-def ant_solution_construction():
+def ant_solution_construction(
+		t_archive, ants_x,
+		std_devs, ranks, ants_random_values, obj_function):
 	""" Manages the construction of ant solutions. """
-	global gauss_probs_normalized
-	global ants_means
-	global ants_Fx
-
 	gauss_probs_normalized = compute_gauss_probs(ranks)
-	indices = roulette_wheel_selection()
+	indices = roulette_wheel_selection(gauss_probs_normalized, ants_random_values)
 	ants_means = compute_means(t_archive, indices)
-	compute_std_devs()
-	sample()
+	compute_std_devs(t_archive, ants_means, std_devs)
+	sample(ants_means, std_devs, ants_x)
 	ants_Fx = obj_function(ants_x)
+	return ants_Fx
 
 
-ants_x = torch.empty([M, n], dtype=dtype)
-ants_Fx = torch.empty([M, k], dtype=dtype)
-ants_means = torch.empty([M, n], dtype=dtype)
-ants_random_values = torch.empty([M, n, 1], dtype=dtype)
-std_devs = torch.empty([M, n], dtype=dtype)
+def main():
+	# If JIT-compiler is enabled, the following function references will be overwritten.
+	if flag_jit_enabled:
+		global compute_gauss_probs
+		global obj_function
+		global normalize_obj_function
+		global asf
+		global vads
+		global update_archive
 
-t_archive = torch.empty([N, n+k], dtype=dtype)
+	if obj_function_name[:4] == 'DTLZ':
+		reference_point = reference_points_dict[obj_function_name]
+		obj_function = getattr(__import__('objective_functions', fromlist=[obj_function_name]), obj_function_name)
+	else:
+		print('\n\nFatal error: obj_function_name not valid!\n')
+		quit()
 
-RECORD = torch.empty([MAX_RECORD_SIZE, k], dtype=dtype)
-z_min = torch.empty([k], dtype=dtype)
-z_ideal = torch.empty([k], dtype=dtype)
-z_nad = torch.empty([k], dtype=dtype)
-z_max = torch.empty([k], dtype=dtype)
-mark = torch.empty([k], dtype=dtype_int)
+	### Creation of output folder. ###
+	try:
+		os.makedirs('./output')
+	except PermissionError:
+		print('\n\nFatal error: You do not have the required permissions to create the output folder. Exiting.')
+		quit()
+	except FileExistsError:
+		pass
 
-union_solutions = torch.empty([N+M, k+n], dtype=dtype)
-union_nFx = torch.empty([N+M, k], dtype=dtype)
-ranks = torch.empty([N+M], dtype=dtype)
-us = torch.empty([N+M], dtype=dtype)
-norms = torch.empty([N+M], dtype=dtype)
-alphas = torch.empty([N+M, N], dtype=dtype)
+	### Creation of output subfolder. ###
+	executionStart = ''.join([str(datetime.now().date())[5:], '_', str(datetime.now().time())[:8]]).replace(':', '-')
+	output_subfolder = ''.join(['./output/', obj_function.__name__, '_m', str(k), '_', executionStart])
+	try:
+		os.makedirs(output_subfolder)
+	except PermissionError:
+		print('\n\nFatal error: You do not have the required permissions to create the output subfolder. Exiting.')
+		quit()
+	except FileExistsError:
+		pass
 
-WV = init_weight_vectors(H, k)
-WV_magnitudes = torch.sqrt(torch.sum(torch.pow(WV, 2), dim=1)).unsqueeze_(dim=1)
+	if flag_create_snapshots:
+		### Creation of snapshot folder. ###
+		try:
+			os.makedirs('./snapshots')
+		except PermissionError:
+			print('\n\nFatal error: You do not have the required permissions to create the snapshots folder. Exiting.')
+			quit()
+		except FileExistsError:
+			pass
 
-flag_jit_traced = False
+		### Creation of snapshot subfolder. ###
+		snapshot_subfolder = ''.join(['./snapshots/', obj_function.__name__, '_m', str(k), '_', executionStart])
+		try:
+			os.makedirs(snapshot_subfolder)
+			with open(''.join([snapshot_subfolder, '/reference_point.ref']), 'w') as f:
+				f.write(reference_point)
+		except PermissionError:
+			print('\n\nFatal error: You do not have the required permissions to create the snapshots subfolder. Exiting.')
+			quit()
+		except FileExistsError:
+			pass
 
-for run in range(num_runs):
-	print('\nStarting run {0}/{1}'.format(run, num_runs - 1))
-	time_run_start = time.time()
+	### Creation of file containing the appropriate reference point for hypervolume calculations. ###
+	try:
+		with open(''.join([output_subfolder, '/reference_point.ref']), 'w') as f:
+			f.write(reference_point)
+	except PermissionError:
+		print('\n\nFatal error: You do not have the required permissions to create the file \'{0}\'\n'
+			+ 'Exiting.'.format(''.join([output_subfolder, '/reference_point.ref'])))
+		quit()
+	except FileExistsError:
+		pass
 
-	t_archive.fill_(np.inf)
-	RECORD.fill_(0.)
-	mark.fill_(0.)
-	ranks.fill_(np.inf)
-	us.fill_(0.)
+	ants_x = torch.empty([M, n], dtype=dtype)
+	ants_Fx = torch.empty([M, k], dtype=dtype)
+	ants_random_values = torch.empty([M, n, 1], dtype=dtype)
+	std_devs = torch.empty([M, n], dtype=dtype)
 
-	# Initializes t_archive with random solutions
-	for _ in range((np.ceil(N / M)).astype(np.int32)):
-		ants_x.uniform_(Rmin,Rmax)
-		ants_Fx = obj_function(ants_x)
-		t_archive = torch.cat(
-			(torch.cat((ants_x, ants_Fx), dim=1),
-			t_archive),
-			dim=0)[:N]
+	t_archive = torch.empty([N, n+k], dtype=dtype)
 
-	init_ref_points()
-	RECORD[0].copy_(z_nad)
-	union_nFx = normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal)
+	RECORD = torch.empty([MAX_RECORD_SIZE, k], dtype=dtype)
+	z_ideal = torch.empty([k], dtype=dtype)
+	z_nad = torch.empty([k], dtype=dtype)
+	mark = torch.empty([k], dtype=dtype_int)
 
-	if scalarizer == 'ASF':
-		alphas = asf(union_nFx, WV)
-	elif scalarizer == 'VADS':
-		alphas = vads(union_nFx, WV, WV_magnitudes)
+	union_nFx = torch.empty([N+M, k], dtype=dtype)
+	ranks = torch.empty([N+M], dtype=dtype)
+	us = torch.empty([N+M], dtype=dtype)
+	norms = torch.empty([N+M], dtype=dtype)
+	alphas = torch.empty([N+M, N], dtype=dtype)
 
-	r2_ranking()
+	WV = init_weight_vectors(H, k)
+	WV_magnitudes = torch.sqrt(torch.sum(torch.pow(WV, 2), dim=1)).unsqueeze_(dim=1)
 
-	# If PyTorch version >= 1.0.0, replace specific functions with JIT-compiled versions.
-	if flag_jit_enabled and not flag_jit_traced:
-		compute_gauss_probs = torch.jit.trace(compute_gauss_probs, (ranks), check_trace=False)
-		obj_function = torch.jit.trace(obj_function, (ants_x), check_trace=False)
-		if scalarizer == 'ASF':
-			asf = torch.jit.trace(asf, (union_nFx, WV), check_trace=False)
-		elif scalarizer == 'VADS':
-			vads = torch.jit.trace(vads, (union_nFx, WV, WV_magnitudes), check_trace=False)
-		update_archive = torch.jit.trace(update_archive, (t_archive, ants_x, ants_Fx, ranks, us, norms), check_trace=False)
-		normalize_obj_function = torch.jit.trace(normalize_obj_function, (t_archive, ants_Fx, z_nad, z_ideal), check_trace=False)
-		flag_jit_traced = True
+	flag_jit_traced = False
 
-	for gen in range(Gmax):
-		ant_solution_construction()
+	for run in range(num_runs):
+		print('\nStarting run {0}/{1}'.format(run, num_runs - 1))
+		time_run_start = time.time()
 
-		update_ref_points(gen)
+		# Wipes the tensors for a new run.
+		t_archive.fill_(np.inf)
+		RECORD.fill_(0.)
+		mark.fill_(0.)
+		ranks.fill_(np.inf)
+		us.fill_(0.)
 
+		# Initializes t_archive with random solutions.
+		for _ in range((np.ceil(N / M)).astype(np.int32)):
+			ants_x.uniform_(Rmin,Rmax)
+			ants_Fx = obj_function(ants_x)
+			t_archive = torch.cat(
+				(torch.cat((ants_x, ants_Fx), dim=1),
+				t_archive),
+				dim=0)[:N]
+
+		# Create the first RECORD entry.
+		z_ideal, z_nad = init_ref_points(t_archive)
+		RECORD[0].copy_(z_nad)
+
+		# Calculate all alpha values.
 		union_nFx = normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal)
-
 		if scalarizer == 'ASF':
 			alphas = asf(union_nFx, WV)
 		elif scalarizer == 'VADS':
 			alphas = vads(union_nFx, WV, WV_magnitudes)
 
-		r2_ranking()
+		norms = calc_magnitudes(t_archive, ants_x, ants_Fx)
+		r2_ranking(alphas, ranks, us, norms)
 
-		t_archive, ranks, us = update_archive(t_archive, ants_x, ants_Fx, ranks, us, norms)
+		# If PyTorch version >= 1.0.0, replace specific functions with JIT-compiled versions.
+		if flag_jit_enabled and not flag_jit_traced:
+			compute_gauss_probs = torch.jit.trace(
+				compute_gauss_probs,
+				(ranks),
+				check_trace=False)
+			obj_function = torch.jit.trace(
+				obj_function,
+				(ants_x),
+				check_trace=False)
+			if scalarizer == 'ASF':
+				asf = torch.jit.trace(asf, (union_nFx, WV), check_trace=False)
+			elif scalarizer == 'VADS':
+				vads = torch.jit.trace(vads, (union_nFx, WV, WV_magnitudes), check_trace=False)
+			update_archive = torch.jit.trace(
+				update_archive,
+				(t_archive, ants_x, ants_Fx, ranks, us, norms),
+				check_trace=False)
+			normalize_obj_function = torch.jit.trace(
+				normalize_obj_function,
+				(t_archive, ants_Fx, z_nad, z_ideal),
+				check_trace=False)
+			
+			flag_jit_traced = True
 
-		if flag_create_snapshots:
-			save_pareto_set_snapshot(run, snapshot_subfolder, gen)
-			save_pareto_front_snapshot(run, snapshot_subfolder, gen)
+		for gen in range(Gmax):
+			ants_Fx = ant_solution_construction(t_archive, ants_x, std_devs, ranks, ants_random_values, obj_function)
 
-	time_run_end = time.time()
-	print('Seconds taken in run: {0}'.format(time_run_end-time_run_start))
+			z_ideal, z_nad = update_ref_points(ants_Fx, RECORD, mark, z_ideal, z_nad, gen)
 
-	save_pareto_front(run)
-	save_pareto_set(run)
+			# Calculate all alpha values.
+			union_nFx = normalize_obj_function(t_archive, ants_Fx, z_nad, z_ideal)
+			if scalarizer == 'ASF':
+				alphas = asf(union_nFx, WV)
+			elif scalarizer == 'VADS':
+				alphas = vads(union_nFx, WV, WV_magnitudes)
+
+			# Perform R2 ranking.
+			norms = calc_magnitudes(t_archive, ants_x, ants_Fx)
+			r2_ranking(alphas, ranks, us, norms)
+
+			# Update t_archive with the best solutions so far.
+			t_archive, ranks, us = update_archive(t_archive, ants_x, ants_Fx, ranks, us, norms)
+
+			if flag_create_snapshots:
+				save_pareto_set_snapshot(snapshot_subfolder, t_archive, ranks, run, gen)
+				save_pareto_front_snapshot(snapshot_subfolder, t_archive, ranks, run, gen)
+
+		time_run_end = time.time()
+		print('Seconds taken in run: {0}'.format(time_run_end-time_run_start))
+
+		save_pareto_front(output_subfolder, t_archive, run)
+		save_pareto_set(output_subfolder, t_archive, run)
+
+if __name__ == '__main__':
+	main()
